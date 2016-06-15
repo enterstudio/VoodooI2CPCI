@@ -1,6 +1,6 @@
 #include <IOKit/IOLib.h>
 #include <IOKit/IOKitKeys.h>
-#include <IOKit/acpi/IOACPIPlatformDevice.h>
+#include <IOKit/pci/IOPCIDevice.h>
 #include <IOKit/IOWorkLoop.h>
 #include <IOKit/IOInterruptEventSource.h>
 #include <IOKit/IOLocks.h>
@@ -162,7 +162,7 @@ class VoodooI2C : public IOService {
     
     
 public:
-    IOACPIPlatformDevice* fACPIDevice;
+    IOPCIDevice*            fPCIDevice = NULL;
     
     struct i2c_msg {
         UInt16 addr;
@@ -190,7 +190,7 @@ public:
     } i2c_smbus_data;
     
     typedef struct {
-        IOACPIPlatformDevice *provider;
+        IOPCIDevice *provider;
         
         IOWorkLoop *workLoop;
         IOInterruptEventSource *interruptSource;
@@ -242,7 +242,7 @@ public:
         
     } I2CBus;
     
-    I2CBus* _dev;
+    I2CBus* _dev = NULL;
     
     typedef struct {
         I2CBus *phys;
@@ -257,7 +257,8 @@ public:
     
     VoodooI2CDevice* bus_devices[2];
     int bus_devices_number;
-    
+    bool woke_up = false;
+    bool fully_initialized = false;
 
     
     
@@ -277,6 +278,7 @@ public:
     void setI2CPowerState(I2CBus* _dev, bool enabled);
     IOReturn setPowerState(unsigned long powerState, IOService *whatDevice);
     virtual bool start(IOService* provider);
+    bool start_OLD(IOService * provider);
     virtual void stop(IOService* provider);
     int waitBusNotBusyI2C(I2CBus* _dev);
     void writel(I2CBus* _dev, UInt32 b, int offset);

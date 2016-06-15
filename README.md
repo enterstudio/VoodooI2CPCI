@@ -1,8 +1,15 @@
-# VoodooI2C
+# VoodooI2CPCI
 
-VoodooI2C is a project to bring support for I2C input devices to OS X. This repository contains code for both I2C controllers and I2C devices.
+VoodooI2CPCI is an early attempt at porting the VoodooI2C project to I2C input devices using PCI instead of ACPI;
+This should bring support for e.g. most Skylake I2C input devices to OS X. This repository contains code for both I2C controllers and I2C devices.
 
 # Current Status
+
+* PCI devices are recognized, and get enumerated, reset, ... But nothing else.
+
+
+
+# VoodooI2C Current Status
 
 Currently the following Intel Lynxpoint I2C controllers are almost fully supported:
 * `INT33C2` and `INT33C3` - Haswell era

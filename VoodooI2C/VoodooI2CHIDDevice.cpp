@@ -17,6 +17,11 @@ bool VoodooI2CHIDDevice::attach(IOService * provider, IOService* child)
     if (!super::attach(provider))
         return false;
     
+    //XXX
+    IOLog("Called ATTACH!\n");
+    return false;
+    
+    
     assert(_controller == 0);
     _controller = (VoodooI2C*)provider;
     _controller->retain();

@@ -7,7 +7,7 @@
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
-	<string>com.alexandred.$(PRODUCT_NAME:rfc1034identifier)</string>
+	<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
 	<key>CFBundleName</key>
@@ -22,28 +22,27 @@
 	<string>1</string>
 	<key>IOKitPersonalities</key>
 	<dict>
-		<key>VoodooI2C</key>
+		<key>VoodooI2CPCI</key>
 		<dict>
 			<key>CFBundleIdentifier</key>
-			<string>com.alexandred.VoodooI2C</string>
+			<string>com.alexandred.VoodooI2CPCI</string>
 			<key>IOClass</key>
 			<string>VoodooI2C</string>
-			<key>IONameMatch</key>
-			<array>
-				<string>INT33C2</string>
-				<string>INT33C3</string>
-			</array>
+			<key>IOPCIMatch</key>
+			<string>0x9d608086</string>
 			<key>IOProviderClass</key>
-			<string>IOACPIPlatformDevice</string>
+			<string>IOPCIDevice</string>
 		</dict>
 	</dict>
 	<key>NSHumanReadableCopyright</key>
-	<string>Copyright © 2014 Alexandre Daoud. All rights reserved.</string>
+	<string>Copyright © 2014-2016 Alexandre Daoud, Maxime Vincent. All rights reserved.</string>
 	<key>OSBundleLibraries</key>
 	<dict>
 		<key>com.apple.iokit.IOACPIFamily</key>
 		<string>1.4</string>
 		<key>com.apple.iokit.IOHIDFamily</key>
+        <string>2.0</string>
+        <key>com.apple.iokit.IOPCIFamily</key>
 		<string>2.0</string>
 		<key>com.apple.kpi.iokit</key>
 		<string>14.0</string>
