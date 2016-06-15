@@ -24,16 +24,9 @@ enum
 // #define IGNORED_DEVICE "DLL05E3"
 // #define IGNORED_DEVICE "SYNA7500"
 
-/*
-############################################################################################
-############################################################################################
-##### acpiConfigure
-##### accepts I2CDevice* and get SSCN & FMCN from the ACPI tables data and set the
-##### values in the struct depending on the configuration we want (will always be I2C master)
-##### currently always returns true, TODO: return false when ACPI methods not available
-############################################################################################
-#############################################################################################
- */
+#ifndef kACPIDevicePathKey
+#define kACPIDevicePathKey			"acpi-path"
+#endif
 
 struct dw_scl_sda_cfg {
         uint32_t ss_hcnt;
@@ -60,6 +53,17 @@ static struct dw_scl_sda_cfg hsw_config = {
         .fs_lcnt = 0xa0,
         .sda_hold = 0x9,
 };
+
+/*
+ ############################################################################################
+ ############################################################################################
+ ##### acpiConfigure
+ ##### accepts I2CDevice* and get SSCN & FMCN from the ACPI tables data and set the
+ ##### values in the struct depending on the configuration we want (will always be I2C master)
+ ##### currently always returns true, TODO: return false when ACPI methods not available
+ ############################################################################################
+ #############################################################################################
+ */
 
 bool VoodooI2C::acpiConfigure(I2CBus* _dev) {
     
@@ -222,10 +226,13 @@ bool VoodooI2C::initI2CBus(I2CBus* _dev) {
     /* SKL hack */
     writel(_dev, 3, 0x204);
    
+    /* REGDUMP */
+    /*
     for(int i = 0; i < 0x100; i+=4)
     {
         IOLog("%s::%s:: 0x%08x @ %x\n", getName(), _dev->name, (unsigned int)(readl(_dev, i)), i);
     }
+    */
     
     //read the bus type from DW_IC_COMP_TYPE
     UInt32 reg = readl(_dev, DW_IC_COMP_TYPE);
@@ -428,7 +435,7 @@ UInt32 VoodooI2C::readClearIntrbitsI2C(I2CBus* _dev) {
 
 
 void VoodooI2C::setI2CPowerState(I2CBus* _dev, bool enabled) {
-    IOLog("ERR: Cannot evaluateObject with IOPCIDevice\n");
+    IOLog("WARN: setI2CPowerState: Cannot evaluateObject with IOPCIDevice\n");
     //_dev->provider->evaluateObject(enabled ? "_PS0" : "_PS3");
 }
 
@@ -473,6 +480,38 @@ IOReturn VoodooI2C::setPowerState(unsigned long powerState, IOService *whatDevic
         IOLog("%s::Woke up from Sleep!\n", getName());
     }
     return kIOPMAckImplied;
+}
+
+IOACPIPlatformDevice* VoodooI2C::copyACPIDevice(IORegistryEntry * device)
+{
+    IOACPIPlatformDevice *  acpiDevice = 0;
+    OSString *				acpiPath;
+    
+    if (device)
+    {
+        acpiPath = (OSString *) device->copyProperty(kACPIDevicePathKey);
+        if (acpiPath && !OSDynamicCast(OSString, acpiPath))
+        {
+            acpiPath->release();
+            acpiPath = 0;
+        }
+        
+        if (acpiPath)
+        {
+            IORegistryEntry * entry;
+            
+            // fromPath returns a retain()'d entry that needs to be released later
+            entry = IORegistryEntry::fromPath(acpiPath->getCStringNoCopy());
+            acpiPath->release();
+            
+            if (entry && entry->metaCast("IOACPIPlatformDevice"))
+                acpiDevice = (IOACPIPlatformDevice *) entry;
+            else if (entry)
+                entry->release();
+        }
+    }
+    
+    return (acpiDevice);
 }
 
 /*
@@ -536,7 +575,8 @@ bool VoodooI2C::start(IOService* provider)
     while(!woke_up) { };
     IOLog("Wake up complete! Power state: %d\n", getPowerState());
     
-    provider->temporaryPowerClampOn();
+    //XXX: TODO: Is this needed?
+    //provider->temporaryPowerClampOn();
     
     
     /*
@@ -562,7 +602,6 @@ bool VoodooI2C::start(IOService* provider)
     fPCIDevice->setBusMasterEnable(true);
     fPCIDevice->setMemoryEnable(true);
 
-    
     
     _dev = (I2CBus *)IOMalloc(sizeof(I2CBus));
     
@@ -648,7 +687,7 @@ bool VoodooI2C::start(IOService* provider)
     //initialise I2C bus
     
     if(!initI2CBus(_dev)) {
-        IOLog("%s::%s:: Failed to initialise I2C Bus\n", getName(), _dev->name);
+        IOLog("%s::%s::Failed to initialise I2C Bus\n", getName(), _dev->name);
         VoodooI2C::stop(provider);
         return false;
     }
@@ -665,64 +704,45 @@ bool VoodooI2C::start(IOService* provider)
     registerService();
     
     /* So that ::stop() cleans everything up */
-    //fully_initialized = true;
-    
+    fully_initialized = true;
     
     //enumerate I2C children, TODO: major refactoring
     plane = (IORegistryPlane *)getPlane(kIODeviceTreePlane);
     
     if (!plane)
     {
-        IOLog("%s::%s:: Could not get kIODeviceTreePlane\n", getName(), _dev->name);
+        IOLog("%s::%s::Could not get kIODeviceTreePlane\n", getName(), _dev->name);
         VoodooI2C::stop(provider);
         return false;
     }
     
-    children = IORegistryIterator::iterateOver(_dev->provider, plane);
     bus_devices_number = 0;
-    IOLog("Children %llx\n", (uint64_t)children);
-    
+    children = IORegistryIterator::iterateOver(_dev->provider, plane);
     if (children != NULL) {
         OSOrderedSet* set = children->iterateAll();
         OSIterator *iter = OSCollectionIterator::withCollection(set);
         if (iter != 0) {
             while( (child = (IORegistryEntry*)iter->getNextObject()) ) {
-                IOLog("VoodooI2C PCI: got child device: %s\n", child->getName());
-                
                 bus_devices[bus_devices_number] = OSTypeAlloc(VoodooI2CHIDDevice);
                 if ( !bus_devices[bus_devices_number]               ||
-                     !bus_devices[bus_devices_number]->init()       ||
-                     0 ) //!bus_devices[bus_devices_number]->attach(this, (IOService*)child) )
+                     !bus_devices[bus_devices_number]->init() )
                 {
                     OSSafeReleaseNULL(bus_devices[bus_devices_number]);
                 } else {
-                    IOService *prov, *service;
-                    OSDictionary *dict;
-                    char			format[] = "%xxxs";
-                    //prov = OSDynamicCast(IOService, child);
-                    //uint64_t p = (uint64_t)prov;
-                    
-                    dict = IOService::registryEntryIDMatching(child->getRegistryEntryID());
-                    //prov = IOServiceGetMatchingService(myMasterPort, dict);
-                    IOLog("Would attach on %s [dict: %llx]\n", child->getName(), (uint64_t)prov);
-                    
-                    snprintf(format + 1, sizeof(format) - 1, "%ds", 2 * child->getDepth( plane ));
-                    IOLog(format, "");
-                    IOLog( "\033[33m%s", child->getName( plane ));
-                    if( (child->getLocation( plane )))
-                        IOLog("@%s", child->getLocation( plane ));
-                    IOLog("\033[0m <class %s", child->getMetaClass()->getClassName());
-                    if( (service = OSDynamicCast(IOService, child)))
-                        IOLog(", busy %ld", (long) service->getBusyState());
-                    IOLog( ">\n");
-                    
-                    bus_devices_number++;
+                    /* This is the PCI Registry entrty, we need to find the ACPI equivalent */
+                    IOService *service = copyACPIDevice(child);
+                    if (service) {
+                        IOLog("%s::%s::I2C slave device found on ACPI: %s\n", getName(), _dev->name, service->getName());
+                        bus_devices[bus_devices_number]->attach(this, service);
+                        bus_devices_number++;
+                    } else {
+                        OSSafeReleaseNULL(bus_devices[bus_devices_number]);
+                    }
                 }
-                
             }
         }
     } else {
-        IOLog("VoodooI2C PCI: No children!\n");
+        IOLog("%s::%s::No I2C children found in registry!\n", getName(), _dev->name);
     }
 
 #if 0
@@ -821,49 +841,58 @@ err_out:
  */
 
 void VoodooI2C::stop(IOService * provider) {
+    uint64_t ptr = 0;
     IOLog("%s::stop\n", getName());
     
-    if (!fully_initialized)
-        goto stop_out;
-    
-    /* XXX
-    for(int i=0;i<=bus_devices_number;i++) {
-        bus_devices[i]->stop(this);
-        OSSafeReleaseNULL(bus_devices[i]);
-    }
-     */
-    
-    if (_dev) {
-        //stop the command gate
-        if (_dev->commandGate) {
-            _dev->workLoop->removeEventSource(_dev->commandGate);
-            _dev->commandGate->release();
-            _dev->commandGate = NULL;
+    IOLog("%s::fully_initialized: %d\n", getName(), fully_initialized);
+    if (fully_initialized) {
+        for(int i=0;i<=bus_devices_number;i++) {
+            ptr = 0 + (uint64_t)bus_devices[i];
+            IOLog("%s::bus_devices[i]->stop(this); bus_devices[%d]=%llx\n", getName(), i, ptr);
+            bus_devices[i]->stop(this);
+            OSSafeReleaseNULL(bus_devices[i]);
         }
         
-        //stop the interrupt source
-        if (_dev->interruptSource) {
-            _dev->workLoop->removeEventSource(_dev->interruptSource);
-            _dev->interruptSource->disable();
-            _dev->interruptSource = NULL;
+        if (_dev) {
+            //stop the command gate
+            IOLog("%s::stop commandGate: %llx\n", getName(), (uint64_t)_dev->commandGate);
+            if (_dev->commandGate) {
+                _dev->workLoop->removeEventSource(_dev->commandGate);
+                _dev->commandGate->release();
+                _dev->commandGate = NULL;
+            }
+            
+            //stop the interrupt source
+            IOLog("%s::stop commandGate: %llx\n", getName(), (uint64_t)_dev->interruptSource);
+            if (_dev->interruptSource) {
+                _dev->workLoop->removeEventSource(_dev->interruptSource);
+                _dev->interruptSource->disable();
+                _dev->interruptSource = NULL;
+            }
+            
+            //stop the work loop
+            IOLog("%s::stop workLoop: %llx\n", getName(), (uint64_t)_dev->workLoop);
+            if (_dev->workLoop) {
+                _dev->workLoop->release();
+                _dev->workLoop = NULL;
+            }
+            
+            //XXX FIXME setI2CPowerState(_dev, false);
+            
+            _dev->provider->close(this);
+            OSSafeReleaseNULL(_dev->provider);
+            
+            IOLog("%s::IOFree(_dev): %llx\n", getName(), (uint64_t)_dev);
+            IOFree(_dev, sizeof(I2CBus));
         }
-        
-        //stop the work loop
-        if (_dev->workLoop) {
-            _dev->workLoop->release();
-            _dev->workLoop = NULL;
-        }
-
-        setI2CPowerState(_dev, false);
-
-        IOFree(_dev, sizeof(I2CBus));
+    } else {
+        IOLog("%s::fPCIDevice->close(): %llx\n", getName(), (uint64_t)fPCIDevice);
+        if (fPCIDevice)
+            fPCIDevice->close(this);
     }
     
-    _dev->provider->close(this);
-    OSSafeReleaseNULL(_dev->provider);
-    
-stop_out:
     //stop power management
+    IOLog("%s::PMstop\n", getName());
     PMstop();
     
     super::stop(provider);

@@ -17,17 +17,12 @@ bool VoodooI2CHIDDevice::attach(IOService * provider, IOService* child)
     if (!super::attach(provider))
         return false;
     
-    //XXX
-    IOLog("Called ATTACH!\n");
-    return false;
-    
-    
     assert(_controller == 0);
     _controller = (VoodooI2C*)provider;
     _controller->retain();
     
-    
     child->attach(this);
+    
     if (!probe(child))
         return false;
     
@@ -55,8 +50,11 @@ bool VoodooI2CHIDDevice::probe(IOService* device) {
         return false;
     }
     
-    
     IOLog("%s::%s::HID Probe called for i2c 0x%02x\n", getName(), _controller->_dev->name, hid_device->addr);
+    
+    // XXX
+    IOLog("About to call initHIDDevice. Now bailing out\n");
+    //return -1;
     
     initHIDDevice(hid_device);
     
@@ -83,9 +81,7 @@ void VoodooI2CHIDDevice::stop(IOService* device) {
     hid_device->workLoop->release();
     hid_device->workLoop = NULL;
     
-    
-    
-    
+
     i2c_hid_free_buffers(ihid, HID_MIN_BUFFER_SIZE);
     IOFree(ihid, sizeof(i2c_hid));
     
@@ -107,7 +103,7 @@ void VoodooI2CHIDDevice::detach( IOService * provider )
 }
 
 int VoodooI2CHIDDevice::initHIDDevice(I2CDevice *hid_device) {
-    int ret;
+    int ret = -1;
     UInt16 hidRegister;
     
     ihid = (i2c_hid*)IOMalloc(sizeof(i2c_hid));
@@ -115,9 +111,10 @@ int VoodooI2CHIDDevice::initHIDDevice(I2CDevice *hid_device) {
     ihid->client = hid_device;
     
     ret = i2c_hid_acpi_pdata(ihid);
+    if (ret < 0)
+        goto err;
     
     ihid->client = hid_device;
-    
     
     hidRegister = ihid->pdata.hid_descriptor_address;
     
@@ -130,7 +127,6 @@ int VoodooI2CHIDDevice::initHIDDevice(I2CDevice *hid_device) {
     //ret = i2c_hid_set_power(ihid, I2C_HID_PWR_ON);
     //if(ret<0)
      //   goto err;
-    
     
     ret = i2c_hid_fetch_hid_descriptor(ihid);
     if (ret < 0)
@@ -150,7 +146,6 @@ int VoodooI2CHIDDevice::initHIDDevice(I2CDevice *hid_device) {
     setProperty("productID", (UInt32)ihid->hdesc.wProductID, 32);
     setProperty("VersionID", (UInt32)ihid->hdesc.wVersionID, 32);
     
-    
     hid_device->workLoop = (IOWorkLoop*)getWorkLoop();
     if(!hid_device->workLoop) {
         IOLog("%s::%s::Failed to get workloop\n", getName(), _controller->_dev->name);
@@ -159,6 +154,9 @@ int VoodooI2CHIDDevice::initHIDDevice(I2CDevice *hid_device) {
     }
 
     hid_device->workLoop->retain();
+    
+    
+
 
     /*
      hid_device->interruptSource = IOInterruptEventSource::interruptEventSource(this, OSMemberFunctionCast(IOInterruptEventAction, this, &VoodooI2CHIDDevice::InterruptOccured), hid_device->provider);
@@ -234,6 +232,8 @@ int VoodooI2CHIDDevice::i2c_hid_acpi_pdata(i2c_hid *ihid) {
     UInt32 guid_3 = 0x0AB305AD;
     UInt32 guid_4 = 0xDE38893D;
     
+    IOReturn ret;
+    
     
     OSObject *result = NULL;
     OSObject *params[3];
@@ -249,8 +249,12 @@ int VoodooI2CHIDDevice::i2c_hid_acpi_pdata(i2c_hid *ihid) {
     params[1] = OSNumber::withNumber(0x1, 8);
     params[2] = OSNumber::withNumber(0x1, 8);
     
-    ihid->client->provider->evaluateObject("_DSM", &result, params, 3);
-
+    ret = ihid->client->provider->evaluateObject("_DSM", &result, params, 3);
+    if (ret != kIOReturnSuccess)
+        ret = ihid->client->provider->evaluateObject("XDSM", &result, params, 3);
+    if (ret != kIOReturnSuccess)
+        return -1; /* FAIL */
+    
     OSNumber* number = OSDynamicCast(OSNumber, result);
     
     ihid->pdata.hid_descriptor_address = number->unsigned32BitValue();
@@ -403,9 +407,11 @@ int VoodooI2CHIDDevice::i2c_hid_set_power(i2c_hid *ihid, int power_state) {
 
 void VoodooI2CHIDDevice::InterruptOccured(OSObject* owner, IOInterruptEventSource* src, int intCount){
     IOLog("interrupt\n");
+    
     if (hid_device->reading)
         return;
     
+    // was not enabled
     //i2c_hid_get_input(ihid);
     
 }
@@ -421,10 +427,10 @@ void VoodooI2CHIDDevice::i2c_hid_get_input(OSObject* owner, IOTimerEventSource* 
     
     ret = i2c_hid_command(ihid, &hid_input_cmd, rdesc, rsize);
 
-//    IOLog("===Input (%d)===\n", rsize);
-//    for (int i = 0; i < rsize; i++)
-//        IOLog("0x%02x ", (UInt8) rdesc[i]);
-//    IOLog("\n");
+    IOLog("===Input (%d)===\n", rsize);
+    for (int i = 0; i < rsize; i++)
+        IOLog("0x%02x ", (UInt8) rdesc[i]);
+    IOLog("\n");
 
     int return_size = rdesc[0] | rdesc[1] << 8;
     if (return_size == 0) {

@@ -285,6 +285,7 @@ public:
     int xferI2C(I2CBus* _dev, i2c_msg *msgs, int num);
     void xferInitI2C(I2CBus* _dev);
     void xferMsgI2C(I2CBus* _dev);
+    IOACPIPlatformDevice* copyACPIDevice(IORegistryEntry * device);
     
     int i2c_master_recv(VoodooI2CHIDDevice::I2CDevice I2CDevice, UInt8 *buf, int count);
     int i2c_master_send(VoodooI2CHIDDevice::I2CDevice I2CDevice, UInt8 *buf, int count);
