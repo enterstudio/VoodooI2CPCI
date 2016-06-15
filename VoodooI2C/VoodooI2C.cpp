@@ -575,10 +575,6 @@ bool VoodooI2C::start(IOService* provider)
     while(!woke_up) { };
     IOLog("Wake up complete! Power state: %d\n", getPowerState());
     
-    //XXX: TODO: Is this needed?
-    //provider->temporaryPowerClampOn();
-    
-    
     /*
      * Our provider class is specified in the driver property table
      * as IOPCIDevice, so the provider must be of that class.
@@ -1237,24 +1233,24 @@ void VoodooI2C::interruptOccured(OSObject* owner, IOInterruptEventSource* src, i
 
 
     if (stat & DW_IC_INTR_TX_ABRT) {
-        IOLog("%s::%s::Interrupt Aborting transaction\n", getName(), _dev->name);
+        //IOLog("%s::%s::Interrupt Aborting transaction\n", getName(), _dev->name);
 
         _dev->cmd_err |= DW_IC_ERR_TX_ABRT;
         _dev->status = STATUS_IDLE;
                 
-        IOLog("%s::%s::I2C transaction aborted with error 0x%x\n", getName(), _dev->name, _dev->abort_source);
+        //IOLog("%s::%s::I2C transaction aborted with error 0x%x\n", getName(), _dev->name, _dev->abort_source);
         
         writel(_dev, 0, DW_IC_INTR_MASK);
         goto tx_aborted;
     }
     
     if (stat & DW_IC_INTR_RX_FULL) {
-        IOLog("%s::%s::interrupt reading transaction\n", getName(), _dev->name);
+        //IOLog("%s::%s::interrupt reading transaction\n", getName(), _dev->name);
         readI2C(_dev);
     }
     
     if (stat & DW_IC_INTR_TX_EMPTY) {
-        IOLog("%s::%s::interrupt xfer transaction\n", getName(), _dev->name);
+        //IOLog("%s::%s::interrupt xfer transaction\n", getName(), _dev->name);
         xferMsgI2C(_dev);
     }
     

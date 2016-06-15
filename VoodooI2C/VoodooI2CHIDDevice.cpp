@@ -52,10 +52,6 @@ bool VoodooI2CHIDDevice::probe(IOService* device) {
     
     IOLog("%s::%s::HID Probe called for i2c 0x%02x\n", getName(), _controller->_dev->name, hid_device->addr);
     
-    // XXX
-    IOLog("About to call initHIDDevice. Now bailing out\n");
-    //return -1;
-    
     initHIDDevice(hid_device);
     
     //super::stop(device);
@@ -124,9 +120,9 @@ int VoodooI2CHIDDevice::initHIDDevice(I2CDevice *hid_device) {
     if (ret < 0)
         goto err;
     
-    //ret = i2c_hid_set_power(ihid, I2C_HID_PWR_ON);
-    //if(ret<0)
-     //   goto err;
+    ret = i2c_hid_set_power(ihid, I2C_HID_PWR_ON);
+    if(ret<0)
+        goto err;
     
     ret = i2c_hid_fetch_hid_descriptor(ihid);
     if (ret < 0)
@@ -192,6 +188,8 @@ int VoodooI2CHIDDevice::initHIDDevice(I2CDevice *hid_device) {
     initialize_wrapper();
     registerService();
     
+    IOLog("%s::%s::Completed initHIDDevice()\n", getName(), _controller->_dev->name);
+    
     return 0;
     
 err:
@@ -234,7 +232,6 @@ int VoodooI2CHIDDevice::i2c_hid_acpi_pdata(i2c_hid *ihid) {
     
     IOReturn ret;
     
-    
     OSObject *result = NULL;
     OSObject *params[3];
     char buffer[16];
@@ -268,14 +265,17 @@ int VoodooI2CHIDDevice::i2c_hid_acpi_pdata(i2c_hid *ihid) {
 }
 
 int VoodooI2CHIDDevice::i2c_get_slave_address(I2CDevice* hid_device){
+    IOReturn ret;
     OSObject* result = NULL;
     
-    hid_device->provider->evaluateObject("_CRS", &result);
+    ret = hid_device->provider->evaluateObject("_CRS", &result);
+    if (ret != kIOReturnSuccess) {
+        IOLog("%s::%s::Failed to find I2C Slave address using _CRS ACPI method\n", getName(), _controller->_dev->name);
+        return -1;
+    }
     
     OSData* data = OSDynamicCast(OSData, result);
-    
     hid_device->addr = *(int*)data->getBytesNoCopy(16,1) & 0xFF;
-
     data->release();
     
     return 0;
