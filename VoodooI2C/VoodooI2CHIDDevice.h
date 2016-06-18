@@ -14,6 +14,7 @@
 #include <IOKit/IOLib.h>
 #include <IOKit/IOWorkLoop.h>
 #include <IOKit/IOInterruptEventSource.h>
+#include <IOKit/IOFilterInterruptEventSource.h>
 #include <IOKit/acpi/IOACPIPlatformDevice.h>
 #include <IOKit/IOLocks.h>
 #include <IOKit/IOCommandGate.h>
@@ -190,7 +191,8 @@ public:
     
     bool probe(IOService* device);
     
-    void InterruptOccured(OSObject* owner, IOInterruptEventSource* src, int intCount);
+    void interruptOccurred(OSObject* owner, IOInterruptEventSource* src, int intCount);
+    bool interruptFilter(OSObject* owner, IOFilterInterruptEventSource * src);
     
     void i2c_hid_get_input(OSObject* owner, IOTimerEventSource* sender);
     

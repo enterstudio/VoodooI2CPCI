@@ -571,7 +571,7 @@ bool VoodooI2C::start(IOService* provider)
         provider->changePowerStateTo(kDTSOnState);
     }
     
-    IODelay(2 * 1000 * 1000); // 2 seconds
+    //XXX IODelay(2 * 1000 * 1000); // 2 seconds
     while(!woke_up) { };
     IOLog("Wake up complete! Power state: %d\n", getPowerState());
     
@@ -618,8 +618,20 @@ bool VoodooI2C::start(IOService* provider)
     _dev->workLoop->retain();
     
     //set up interrupts
+//    _dev->interruptSource =
+//    IOInterruptEventSource::interruptEventSource(this, OSMemberFunctionCast(IOInterruptEventAction, this, &VoodooI2C::interruptOccured), _dev->provider);
+//    
     _dev->interruptSource =
-    IOInterruptEventSource::interruptEventSource(this, OSMemberFunctionCast(IOInterruptEventAction, this, &VoodooI2C::interruptOccured), _dev->provider);
+            IOFilterInterruptEventSource::filterInterruptEventSource(this,
+                                                                     OSMemberFunctionCast(IOInterruptEventAction, this, &VoodooI2C::interruptOccurred),
+                                                                     OSMemberFunctionCast(IOFilterInterruptEventSource::Filter, this, &VoodooI2C::interruptFilter),
+                                                                     _dev->provider);
+    if (!_dev->interruptSource)
+    {
+        IOLog("%s::%s::Could not register interrupt source\n", getName(), _dev->name);
+        VoodooI2C::stop(provider);
+        goto err_out;
+    }
     
     if (_dev->workLoop->addEventSource(_dev->interruptSource) != kIOReturnSuccess) {
         IOLog("%s::%s::Could not add interrupt source to workloop\n", getName(), _dev->name);
@@ -627,7 +639,7 @@ bool VoodooI2C::start(IOService* provider)
         goto err_out;
     }
     
-    //IOLog("%s:: Not enabling interrupts for now...\n", getName());
+    IOLog("%s::%s::Enabling interrupts...\n", getName(), _dev->name);
     _dev->interruptSource->enable();
     
     //set up command gate
@@ -1220,7 +1232,11 @@ int VoodooI2C::i2c_master_send(VoodooI2CHIDDevice::I2CDevice I2CDevice, UInt8 *b
     
 }
 
-void VoodooI2C::interruptOccured(OSObject* owner, IOInterruptEventSource* src, int intCount) {
+bool VoodooI2C::interruptFilter(OSObject* owner, IOFilterInterruptEventSource * src) {
+    return true;
+}
+
+void VoodooI2C::interruptOccurred(OSObject* owner, IOInterruptEventSource* src, int intCount) {
     UInt32 stat, enabled;
     
     enabled = readl(_dev, DW_IC_ENABLE);

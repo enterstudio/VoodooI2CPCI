@@ -3,6 +3,7 @@
 #include <IOKit/pci/IOPCIDevice.h>
 #include <IOKit/IOWorkLoop.h>
 #include <IOKit/IOInterruptEventSource.h>
+#include <IOKit/IOFilterInterruptEventSource.h>
 #include <IOKit/IOLocks.h>
 #include <IOKit/IOCommandGate.h>
 #include <string.h>
@@ -291,7 +292,8 @@ public:
     int i2c_master_recv(VoodooI2CHIDDevice::I2CDevice I2CDevice, UInt8 *buf, int count);
     int i2c_master_send(VoodooI2CHIDDevice::I2CDevice I2CDevice, UInt8 *buf, int count);
     
-    void interruptOccured(OSObject* owner, IOInterruptEventSource* src, int intCount);
+    void interruptOccurred(OSObject* owner, IOInterruptEventSource* src, int intCount);
+    bool interruptFilter(OSObject* owner, IOFilterInterruptEventSource * src);
     
     //static I2CBus* getBusByName(char* name );
     

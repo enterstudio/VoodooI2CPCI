@@ -42,6 +42,14 @@ bool VoodooI2CHIDDevice::probe(IOService* device) {
     
     hid_device->provider = OSDynamicCast(IOACPIPlatformDevice, device);
     hid_device->provider->retain();
+    if (!hid_device->provider->isOpen())
+        IOLog("%s was already open\n", hid_device->provider->getName());
+    else {
+        if (hid_device->provider->open(hid_device->provider))
+            IOLog("%s is now open\n", hid_device->provider->getName());
+        else
+            IOLog("%s failed to open\n", hid_device->provider->getName());
+    }
     
     int ret = i2c_get_slave_address(hid_device);
     if (ret < 0){
@@ -101,6 +109,8 @@ void VoodooI2CHIDDevice::detach( IOService * provider )
 int VoodooI2CHIDDevice::initHIDDevice(I2CDevice *hid_device) {
     int ret = -1;
     UInt16 hidRegister;
+    IOInterruptAction intHandler;
+    int intType;
     
     ihid = (i2c_hid*)IOMalloc(sizeof(i2c_hid));
     
@@ -152,28 +162,67 @@ int VoodooI2CHIDDevice::initHIDDevice(I2CDevice *hid_device) {
     hid_device->workLoop->retain();
     
     
+    
+    /* Some experiments */
+    
+//    IOLog("Enabling interrupt for provider: %s\n", hid_device->provider->getName());
+//
+//    if  (kIOReturnSuccess == hid_device->provider->getInterruptType(0, &intType))
+//    {
+//        IOLog("getInterruptType says: %d\n", intType);
+//    }
+//    
+//    intHandler = OSMemberFunctionCast(IOInterruptAction,
+//                                      this, &IOInterruptEventSource::disableInterruptOccurred);
+//    
+//    IOLog("intHandler: %p -- is it null: %d\n", intHandler, (intHandler==NULL)?1:0);
+//    
+//    IOLog("registerInterrupt says %s\n", IOService::stringFromReturn(hid_device->provider->registerInterrupt(0, this, NULL)));
 
-//     hid_device->interruptSource = IOInterruptEventSource::interruptEventSource(this,
-//                                                                                OSMemberFunctionCast(IOInterruptEventAction, this, &VoodooI2CHIDDevice::InterruptOccured),
-//                                                                                hid_device->provider);
-//     
+    
+    
+    
+    
+    /* Set-up interrupt handler */  
+
+    hid_device->interruptSource =
+        IOFilterInterruptEventSource::filterInterruptEventSource(this,
+                                                                 OSMemberFunctionCast(IOInterruptEventAction, this, &VoodooI2CHIDDevice::interruptOccurred),
+                                                                 OSMemberFunctionCast(IOFilterInterruptEventSource::Filter, this, &VoodooI2CHIDDevice::interruptFilter),
+                                                                 hid_device->provider);
+    
+//    hid_device->interruptSource = IOInterruptEventSource::interruptEventSource(this,
+//                                                                               OSMemberFunctionCast(IOInterruptEventAction, this, &VoodooI2CHIDDevice::interruptOccurred),
+//                                                                               hid_device->provider);
+
+    if (!hid_device->interruptSource)
+    {
+        IOLog("%s::%s::Failed to add interrupt source\n", getName(), _controller->_dev->name);
+        return -1;
+    }
+//
 //     if (hid_device->workLoop->addEventSource(hid_device->interruptSource) != kIOReturnSuccess) {
 //         IOLog("%s::%s::Could not add interrupt source to workloop\n", getName(), _controller->_dev->name);
 //         stop(this);
 //         return -1;
 //     }
-//     
+//    
 //     hid_device->interruptSource->enable();
     
     
     
-    hid_device->timerSource = IOTimerEventSource::timerEventSource(this, OSMemberFunctionCast(IOTimerEventSource::Action, this, &VoodooI2CHIDDevice::i2c_hid_get_input));
-    if (!hid_device->timerSource){
-        goto err;
-    }
     
-    hid_device->workLoop->addEventSource(hid_device->timerSource);
-    hid_device->timerSource->setTimeoutMS(10);
+    
+    /* Polling instead of ISR */
+    
+//    hid_device->timerSource = IOTimerEventSource::timerEventSource(this, OSMemberFunctionCast(IOTimerEventSource::Action, this, &VoodooI2CHIDDevice::i2c_hid_get_input));
+//    if (!hid_device->timerSource){
+//        goto err;
+//    }
+//    
+//    hid_device->workLoop->addEventSource(hid_device->timerSource);
+//    hid_device->timerSource->setTimeoutMS(10);
+    
      /*
      
      hid_device->commandGate = IOCommandGate::commandGate(this);
@@ -183,6 +232,8 @@ int VoodooI2CHIDDevice::initHIDDevice(I2CDevice *hid_device) {
      return -1;
      }
      */
+    
+    
     
     i2c_hid_get_report_descriptor(ihid);
 
@@ -394,13 +445,13 @@ int VoodooI2CHIDDevice::__i2c_hid_command(i2c_hid *ihid, struct i2c_hid_cmd *com
     
     ret = 0;
     
-    for (int i = 0; i < msg_num; i++)
-    {
-        if (msg[i].len > 2)
-            IOLog("I2C ok: addr: %x len: %d [0x%02x 0x%02x 0x%02x 0x%02x]\n", msg[i].addr, msg[i].len, *msg[i].buf, *(msg[i].buf+1), *(msg[i].buf+2), *(msg[i].buf+3));
-        else
-            IOLog("I2C ok: addr: %x len: %d [0x%02x 0x%02x]\n", msg[i].addr, msg[i].len, *msg[i].buf, *(msg[i].buf+1));
-    }
+//    for (int i = 0; i < msg_num; i++)
+//    {
+//        if (msg[i].len > 2)
+//            IOLog("I2C ok: addr: %x len: %d [0x%02x 0x%02x 0x%02x 0x%02x]\n", msg[i].addr, msg[i].len, *msg[i].buf, *(msg[i].buf+1), *(msg[i].buf+2), *(msg[i].buf+3));
+//        else
+//            IOLog("I2C ok: addr: %x len: %d [0x%02x 0x%02x]\n", msg[i].addr, msg[i].len, *msg[i].buf, *(msg[i].buf+1));
+//    }
     
     
     return ret;
@@ -422,7 +473,7 @@ int VoodooI2CHIDDevice::i2c_write_command(i2c_hid *ihid, UInt16 reg, UInt16 cmd)
         return ret < 0 ? ret : -1;
     ret = 0;
     
-    IOLog("I2C ok: addr: %x len: %d [0x%02x 0x%02x 0x%02x 0x%02x]\n", msg.addr, msg.len, *msg.buf, *(msg.buf+1), *(msg.buf+2), *(msg.buf+3));
+    //IOLog("I2C ok: addr: %x len: %d [0x%02x 0x%02x 0x%02x 0x%02x]\n", msg.addr, msg.len, *msg.buf, *(msg.buf+1), *(msg.buf+2), *(msg.buf+3));
 
     return ret;
 }
@@ -437,14 +488,23 @@ int VoodooI2CHIDDevice::i2c_hid_set_power(i2c_hid *ihid, int power_state) {
     return ret;
 }
 
-void VoodooI2CHIDDevice::InterruptOccured(OSObject* owner, IOInterruptEventSource* src, int intCount){
+bool VoodooI2CHIDDevice::interruptFilter(OSObject* owner, IOFilterInterruptEventSource * src){
+    IOLog("interrupt filter\n");
+    
+    /* How to check?? */
+
+    return true;
+}
+
+void VoodooI2CHIDDevice::interruptOccurred(OSObject* owner, IOInterruptEventSource* src, int intCount){
     IOLog("interrupt\n");
     
-    if (hid_device->reading)
-        return;
+//    if (hid_device->reading)
+//        return;
     
     // was not enabled
     //i2c_hid_get_input(ihid);
+    i2c_hid_get_input(owner, NULL);
     
 }
 
@@ -589,16 +649,19 @@ bool VoodooI2CHIDDevice::i2c_hid_hwreset(i2c_hid *ihid) {
 #define ETP_I2C_SET_CMD		0x0300
 #define ETP_ENABLE_ABS		0x0001
 #define ETP_DISABLE_ABS		0x0000
+    
+    IODelay(500 * 1000); /* wait 500 ms */
 
     /* ELAN: Set ABS */
-    if (!(i2c_write_command(ihid, ETP_I2C_SET_CMD, ETP_ENABLE_ABS)))
-        IOLog("Sent ELAN Enable ABS command\n");
+    ret = i2c_write_command(ihid, ETP_I2C_SET_CMD, ETP_ENABLE_ABS);
+    if (ret)
+        IOLog("ELAN Enable ABS command failed\n");
+    else
+        IOLog("ELAN Enable ABS command successful\n");
     
 //    /* ELAN: Set ABS */
 //    if (!(i2c_write_command(ihid, ETP_I2C_SET_CMD, ETP_DISABLE_ABS)))
 //        IOLog("Sent ELAN Disable ABS command\n");
-    
-
     
     return 0;
 };
