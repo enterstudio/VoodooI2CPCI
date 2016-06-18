@@ -172,7 +172,6 @@ public:
     
     struct i2c_hid_cmd hid_set_power_cmd = { I2C_HID_CMD(0x08) };
     
-    
     int initHIDDevice(I2CDevice *hid_device);
     
     int i2c_hid_acpi_pdata(i2c_hid *ihid);
@@ -202,6 +201,8 @@ public:
     int i2c_get_slave_address(I2CDevice* hid_device);
     
     bool i2c_hid_hwreset(i2c_hid *ihid);
+    
+    int i2c_write_command(i2c_hid *ihid, UInt16 reg, UInt16 cmd);
 
 };
 

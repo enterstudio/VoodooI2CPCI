@@ -153,18 +153,19 @@ int VoodooI2CHIDDevice::initHIDDevice(I2CDevice *hid_device) {
     
     
 
-
-    /*
-     hid_device->interruptSource = IOInterruptEventSource::interruptEventSource(this, OSMemberFunctionCast(IOInterruptEventAction, this, &VoodooI2CHIDDevice::InterruptOccured), hid_device->provider);
-     
-     if (hid_device->workLoop->addEventSource(hid_device->interruptSource) != kIOReturnSuccess) {
-         IOLog("%s::%s::Could not add interrupt source to workloop\n", getName(), _controller->_dev->name);
-         stop(this);
-         return -1;
-     }
-     
-     hid_device->interruptSource->enable();
-     */
+//     hid_device->interruptSource = IOInterruptEventSource::interruptEventSource(this,
+//                                                                                OSMemberFunctionCast(IOInterruptEventAction, this, &VoodooI2CHIDDevice::InterruptOccured),
+//                                                                                hid_device->provider);
+//     
+//     if (hid_device->workLoop->addEventSource(hid_device->interruptSource) != kIOReturnSuccess) {
+//         IOLog("%s::%s::Could not add interrupt source to workloop\n", getName(), _controller->_dev->name);
+//         stop(this);
+//         return -1;
+//     }
+//     
+//     hid_device->interruptSource->enable();
+    
+    
     
     hid_device->timerSource = IOTimerEventSource::timerEventSource(this, OSMemberFunctionCast(IOTimerEventSource::Action, this, &VoodooI2CHIDDevice::i2c_hid_get_input));
     if (!hid_device->timerSource){
@@ -201,15 +202,15 @@ err:
 void VoodooI2CHIDDevice::initialize_wrapper(void) {
     destroy_wrapper();
 
-    IOLog("VoodooI2C: %s, line %d\n", __FILE__, __LINE__);
+    //IOLog("VoodooI2C: %s, line %d\n", __FILE__, __LINE__);
     _wrapper = new VoodooHIDWrapper;
     if (_wrapper->init()) {
-        IOLog("VoodooI2C: %s, line %d\n", __FILE__, __LINE__);
+        //IOLog("VoodooI2C: %s, line %d\n", __FILE__, __LINE__);
         _wrapper->attach(this);
         _wrapper->start(this);
     }
     else {
-        IOLog("VoodooI2C: %s, line %d\n", __FILE__, __LINE__);
+        //IOLog("VoodooI2C: %s, line %d\n", __FILE__, __LINE__);
         _wrapper->release();
         _wrapper = NULL;
     }
@@ -341,7 +342,9 @@ int VoodooI2CHIDDevice::i2c_hid_command(i2c_hid *ihid, struct i2c_hid_cmd *comma
     return __i2c_hid_command(ihid, command, 0, 0, NULL, 0, buf_recv, data_len);
 }
 
-int VoodooI2CHIDDevice::__i2c_hid_command(i2c_hid *ihid, struct i2c_hid_cmd *command, UInt8 reportID, UInt8 reportType, UInt8 *args, int args_len, unsigned char *buf_recv, int data_len) {
+int VoodooI2CHIDDevice::__i2c_hid_command(i2c_hid *ihid, struct i2c_hid_cmd *command, UInt8 reportID, UInt8 reportType, UInt8 *args, int args_len,
+                                                unsigned char *buf_recv, int data_len)
+{
     union command *cmd = (union command *)ihid->cmdbuf;
     int ret;
     struct i2c_msg msg[2];
@@ -391,6 +394,36 @@ int VoodooI2CHIDDevice::__i2c_hid_command(i2c_hid *ihid, struct i2c_hid_cmd *com
     
     ret = 0;
     
+    for (int i = 0; i < msg_num; i++)
+    {
+        if (msg[i].len > 2)
+            IOLog("I2C ok: addr: %x len: %d [0x%02x 0x%02x 0x%02x 0x%02x]\n", msg[i].addr, msg[i].len, *msg[i].buf, *(msg[i].buf+1), *(msg[i].buf+2), *(msg[i].buf+3));
+        else
+            IOLog("I2C ok: addr: %x len: %d [0x%02x 0x%02x]\n", msg[i].addr, msg[i].len, *msg[i].buf, *(msg[i].buf+1));
+    }
+    
+    
+    return ret;
+}
+
+
+int VoodooI2CHIDDevice::i2c_write_command(i2c_hid *ihid, UInt16 reg, UInt16 cmd)
+{
+    int ret;
+    int msg_num = 1;
+    UInt8 buf[4] = { (UInt8)(reg & 0xFF), (UInt8)((reg >> 8) & 0xFF), (UInt8)(cmd & 0xFF), (UInt8)((cmd >> 8) & 0xFF) };
+    struct i2c_msg msg = {  .addr = ihid->client->addr,
+                            .flags = 0, //ihid->client->flags & I2C_M_TEN;
+                            .len = 4,
+                            .buf = buf };
+    
+    ret = _controller->i2c_transfer((VoodooI2C::i2c_msg *)&msg, msg_num);
+    if (ret != msg_num)
+        return ret < 0 ? ret : -1;
+    ret = 0;
+    
+    IOLog("I2C ok: addr: %x len: %d [0x%02x 0x%02x 0x%02x 0x%02x]\n", msg.addr, msg.len, *msg.buf, *(msg.buf+1), *(msg.buf+2), *(msg.buf+3));
+
     return ret;
 }
 
@@ -403,7 +436,6 @@ int VoodooI2CHIDDevice::i2c_hid_set_power(i2c_hid *ihid, int power_state) {
     
     return ret;
 }
-
 
 void VoodooI2CHIDDevice::InterruptOccured(OSObject* owner, IOInterruptEventSource* src, int intCount){
     IOLog("interrupt\n");
@@ -427,10 +459,10 @@ void VoodooI2CHIDDevice::i2c_hid_get_input(OSObject* owner, IOTimerEventSource* 
     
     ret = i2c_hid_command(ihid, &hid_input_cmd, rdesc, rsize);
 
-    IOLog("===Input (%d)===\n", rsize);
-    for (int i = 0; i < rsize; i++)
-        IOLog("0x%02x ", (UInt8) rdesc[i]);
-    IOLog("\n");
+//    IOLog("===Input (%d)===\n", rsize);
+//    for (int i = 0; i < rsize; i++)
+//        IOLog("0x%02x ", (UInt8) rdesc[i]);
+//    IOLog("\n");
 
     int return_size = rdesc[0] | rdesc[1] << 8;
     if (return_size == 0) {
@@ -461,6 +493,7 @@ void VoodooI2CHIDDevice::i2c_hid_get_input(OSObject* owner, IOTimerEventSource* 
 bool VoodooI2CHIDDevice::i2c_hid_get_report_descriptor(i2c_hid *ihid){
     UInt rsize;
     int ret;
+    
     
     IOLog("reg: 0x%x\n",ihid->hdesc.wReportDescRegister);
     
@@ -537,17 +570,35 @@ void VoodooI2CHIDDevice::write_report_descriptor_to_buffer(IOBufferMemoryDescrip
 
 bool VoodooI2CHIDDevice::i2c_hid_hwreset(i2c_hid *ihid) {
     int ret;
+    unsigned char buf[2];
     
     ret = i2c_hid_set_power(ihid, I2C_HID_PWR_ON);
     
     if (ret)
         return ret;
 
-    ret = i2c_hid_command(ihid, &hid_reset_cmd, NULL, 0);
-    if (ret) {
+    /* Need to read back two NULL bytes after reset! */
+    ret = i2c_hid_command(ihid, &hid_reset_cmd, buf, 2);
+    if (ret || (*buf != 0) || (*(buf+1) != 0))
+    {
+        IOLog("HID Reset command failed\n");
         i2c_hid_set_power(ihid, I2C_HID_PWR_SLEEP);
         return ret;
     }
+    
+#define ETP_I2C_SET_CMD		0x0300
+#define ETP_ENABLE_ABS		0x0001
+#define ETP_DISABLE_ABS		0x0000
+
+    /* ELAN: Set ABS */
+    if (!(i2c_write_command(ihid, ETP_I2C_SET_CMD, ETP_ENABLE_ABS)))
+        IOLog("Sent ELAN Enable ABS command\n");
+    
+//    /* ELAN: Set ABS */
+//    if (!(i2c_write_command(ihid, ETP_I2C_SET_CMD, ETP_DISABLE_ABS)))
+//        IOLog("Sent ELAN Disable ABS command\n");
+    
+
     
     return 0;
 };

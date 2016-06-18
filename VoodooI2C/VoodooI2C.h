@@ -191,6 +191,7 @@ public:
     
     typedef struct {
         IOPCIDevice *provider;
+        IOACPIPlatformDevice *provider_acpi;
         
         IOWorkLoop *workLoop;
         IOInterruptEventSource *interruptSource;

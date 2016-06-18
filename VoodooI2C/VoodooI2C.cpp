@@ -602,6 +602,7 @@ bool VoodooI2C::start(IOService* provider)
     _dev = (I2CBus *)IOMalloc(sizeof(I2CBus));
     
     _dev->provider = fPCIDevice;
+    _dev->provider_acpi = copyACPIDevice(fPCIDevice);
     _dev->name = getMatchedName(fPCIDevice);
     
     _dev->provider->retain();
