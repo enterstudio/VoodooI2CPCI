@@ -293,6 +293,7 @@ public:
     int i2c_master_send(VoodooI2CHIDDevice::I2CDevice I2CDevice, UInt8 *buf, int count);
     
     void interruptOccurred(OSObject* owner, IOInterruptEventSource* src, int intCount);
+    void interruptOccurred2(OSObject* owner, IOInterruptEventSource* src, int intCount);
     bool interruptFilter(OSObject* owner, IOFilterInterruptEventSource * src);
     
     //static I2CBus* getBusByName(char* name );

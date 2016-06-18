@@ -602,10 +602,16 @@ bool VoodooI2C::start(IOService* provider)
     _dev = (I2CBus *)IOMalloc(sizeof(I2CBus));
     
     _dev->provider = fPCIDevice;
-    _dev->provider_acpi = copyACPIDevice(fPCIDevice);
     _dev->name = getMatchedName(fPCIDevice);
+    _dev->provider_acpi = copyACPIDevice(fPCIDevice);
+    if(!_dev->provider_acpi) {
+        IOLog("%s::%s::Failed to get ACPI equivalent of %s\n", getName(), _dev->name, fPCIDevice->getName());
+        VoodooI2C::stop(provider);
+        goto err_out;
+    }
     
     _dev->provider->retain();
+    _dev->provider_acpi->retain();
     
     //set up workloop
     _dev->workLoop = (IOWorkLoop*)getWorkLoop();
@@ -625,7 +631,7 @@ bool VoodooI2C::start(IOService* provider)
             IOFilterInterruptEventSource::filterInterruptEventSource(this,
                                                                      OSMemberFunctionCast(IOInterruptEventAction, this, &VoodooI2C::interruptOccurred),
                                                                      OSMemberFunctionCast(IOFilterInterruptEventSource::Filter, this, &VoodooI2C::interruptFilter),
-                                                                     _dev->provider);
+                                                                     _dev->provider_acpi);
     if (!_dev->interruptSource)
     {
         IOLog("%s::%s::Could not register interrupt source\n", getName(), _dev->name);
@@ -1234,6 +1240,10 @@ int VoodooI2C::i2c_master_send(VoodooI2CHIDDevice::I2CDevice I2CDevice, UInt8 *b
 
 bool VoodooI2C::interruptFilter(OSObject* owner, IOFilterInterruptEventSource * src) {
     return true;
+}
+
+void VoodooI2C::interruptOccurred2(OSObject* owner, IOInterruptEventSource* src, int intCount) {
+    IOLog("I2C Slave interrupt\n");
 }
 
 void VoodooI2C::interruptOccurred(OSObject* owner, IOInterruptEventSource* src, int intCount) {

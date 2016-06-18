@@ -183,7 +183,7 @@ int VoodooI2CHIDDevice::initHIDDevice(I2CDevice *hid_device) {
     
     
     
-    /* Set-up interrupt handler */  
+    /* Set-up interrupt handler */
 
     hid_device->interruptSource =
         IOFilterInterruptEventSource::filterInterruptEventSource(this,
