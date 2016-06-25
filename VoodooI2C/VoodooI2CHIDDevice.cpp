@@ -174,6 +174,7 @@ int VoodooI2CHIDDevice::initHIDDevice(I2CDevice *hid_device) {
     
     hid_device->workLoop->addEventSource(hid_device->timerSource);
     hid_device->timerSource->setTimeoutMS(10);
+    
      /*
      
      hid_device->commandGate = IOCommandGate::commandGate(this);
@@ -394,13 +395,13 @@ int VoodooI2CHIDDevice::__i2c_hid_command(i2c_hid *ihid, struct i2c_hid_cmd *com
     
     ret = 0;
     
-    for (int i = 0; i < msg_num; i++)
-    {
-        if (msg[i].len > 2)
-            IOLog("I2C ok: addr: %x len: %d [0x%02x 0x%02x 0x%02x 0x%02x]\n", msg[i].addr, msg[i].len, *msg[i].buf, *(msg[i].buf+1), *(msg[i].buf+2), *(msg[i].buf+3));
-        else
-            IOLog("I2C ok: addr: %x len: %d [0x%02x 0x%02x]\n", msg[i].addr, msg[i].len, *msg[i].buf, *(msg[i].buf+1));
-    }
+//    for (int i = 0; i < msg_num; i++)
+//    {
+//        if (msg[i].len > 2)
+//            IOLog("I2C ok: addr: %x len: %d [0x%02x 0x%02x 0x%02x 0x%02x]\n", msg[i].addr, msg[i].len, *msg[i].buf, *(msg[i].buf+1), *(msg[i].buf+2), *(msg[i].buf+3));
+//        else
+//            IOLog("I2C ok: addr: %x len: %d [0x%02x 0x%02x]\n", msg[i].addr, msg[i].len, *msg[i].buf, *(msg[i].buf+1));
+//    }
     
     
     return ret;
@@ -422,7 +423,7 @@ int VoodooI2CHIDDevice::i2c_write_command(i2c_hid *ihid, UInt16 reg, UInt16 cmd)
         return ret < 0 ? ret : -1;
     ret = 0;
     
-    IOLog("I2C ok: addr: %x len: %d [0x%02x 0x%02x 0x%02x 0x%02x]\n", msg.addr, msg.len, *msg.buf, *(msg.buf+1), *(msg.buf+2), *(msg.buf+3));
+//    IOLog("I2C ok: addr: %x len: %d [0x%02x 0x%02x 0x%02x 0x%02x]\n", msg.addr, msg.len, *msg.buf, *(msg.buf+1), *(msg.buf+2), *(msg.buf+3));
 
     return ret;
 }
@@ -449,9 +450,12 @@ void VoodooI2CHIDDevice::InterruptOccured(OSObject* owner, IOInterruptEventSourc
 }
 
 void VoodooI2CHIDDevice::i2c_hid_get_input(OSObject* owner, IOTimerEventSource* sender) {
-//    IOLog("getting input\n");
+    //IOLog("getting input\n");
     UInt rsize;
     int ret;
+    static unsigned char* rdesc_prev = NULL;
+    static UInt rsize_prev = 0;
+    bool new_report = true;
     
     rsize = UInt16(ihid->hdesc.wMaxInputLength);
     
@@ -478,16 +482,47 @@ void VoodooI2CHIDDevice::i2c_hid_get_input(OSObject* owner, IOTimerEventSource* 
 
     IOBufferMemoryDescriptor *buffer = IOBufferMemoryDescriptor::inTaskWithOptions(kernel_task, 0, return_size);
     buffer->writeBytes(0, rdesc + 2, return_size - 2);
-
-    IOReturn err = _wrapper->handleReport(buffer, kIOHIDReportTypeInput);
-    if (err != kIOReturnSuccess)
-        IOLog("Error handling report: 0x%.8x\n", err);
+    
+    /* Compare to previous report */
+    if (rdesc_prev)
+    {
+        /* See if they're different! */
+        if (rsize == rsize_prev)
+        {
+            if (memcmp(rdesc_prev, rdesc, rsize))
+            {
+                new_report = true;
+            } else {
+                new_report = false;
+            }
+        } else {
+            new_report = true;
+        }
+        
+        /* We don't need the previous report anymore */
+        IOFree(rdesc_prev, rsize_prev);
+    }
+    else
+    {
+        new_report = true;
+    }
+    
+    /* Keep for next comparison */
+    rdesc_prev = rdesc;
+    rsize_prev = rsize;
+    
+    if (new_report)
+    {
+        IOReturn err = _wrapper->handleReport(buffer, kIOHIDReportTypeInput);
+        if (err != kIOReturnSuccess)
+            IOLog("Error handling report: 0x%.8x\n", err);
+    }
 
     buffer->release();
 
-    IOFree(rdesc, rsize);
+    //IOFree(rdesc, rsize);
     
-    hid_device->timerSource->setTimeoutMS(10);
+    hid_device->timerSource->setTimeoutMS(20);
 }
 
 bool VoodooI2CHIDDevice::i2c_hid_get_report_descriptor(i2c_hid *ihid){
