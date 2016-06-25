@@ -287,11 +287,16 @@ public:
     void xferInitI2C(I2CBus* _dev);
     void xferMsgI2C(I2CBus* _dev);
     IOACPIPlatformDevice* copyACPIDevice(IORegistryEntry * device);
+    UInt32 getInterruptVector(void) const;
+    bool getNumberValue(const char * propKey,
+                        void       * outValue,
+                        UInt32       outBits ) const;
     
     int i2c_master_recv(VoodooI2CHIDDevice::I2CDevice I2CDevice, UInt8 *buf, int count);
     int i2c_master_send(VoodooI2CHIDDevice::I2CDevice I2CDevice, UInt8 *buf, int count);
     
     void interruptOccured(OSObject* owner, IOInterruptEventSource* src, int intCount);
+    void interruptOccured2(OSObject* owner, IOInterruptEventSource* src, int intCount);
     
     //static I2CBus* getBusByName(char* name );
     

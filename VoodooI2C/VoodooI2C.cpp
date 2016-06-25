@@ -523,6 +523,11 @@ IOACPIPlatformDevice* VoodooI2C::copyACPIDevice(IORegistryEntry * device)
  #############################################################################################
  */
 
+void int_handler(OSObject *target, void *refCon, IOService *nub, int source)
+{
+    return;
+}
+
 bool VoodooI2C::start(IOService* provider)
 {
     IORegistryIterator      *children;
@@ -571,7 +576,7 @@ bool VoodooI2C::start(IOService* provider)
         provider->changePowerStateTo(kDTSOnState);
     }
     
-    IODelay(2 * 1000 * 1000); // 2 seconds
+    //IODelay(2 * 1000 * 1000); // 2 seconds
     while(!woke_up) { };
     IOLog("Wake up complete! Power state: %d\n", getPowerState());
     
@@ -619,7 +624,7 @@ bool VoodooI2C::start(IOService* provider)
     
     //set up interrupts
     _dev->interruptSource =
-    IOInterruptEventSource::interruptEventSource(this, OSMemberFunctionCast(IOInterruptEventAction, this, &VoodooI2C::interruptOccured), _dev->provider);
+    IOInterruptEventSource::interruptEventSource(this, OSMemberFunctionCast(IOInterruptEventAction, this, &VoodooI2C::interruptOccured), _dev->provider_acpi);
     
     if (_dev->workLoop->addEventSource(_dev->interruptSource) != kIOReturnSuccess) {
         IOLog("%s::%s::Could not add interrupt source to workloop\n", getName(), _dev->name);
@@ -729,9 +734,58 @@ bool VoodooI2C::start(IOService* provider)
                     /* This is the PCI Registry entrty, we need to find the ACPI equivalent */
                     IOService *service = copyACPIDevice(child);
                     if (service) {
+                        IOInterruptEventSource *interruptSource;
+                        int intType;
+                        
+                        IOLog("requestProbe: %s\n", IOService::stringFromReturn(service->requestProbe(0)));
                         IOLog("%s::%s::I2C slave device found on ACPI: %s\n", getName(), _dev->name, service->getName());
+                        
+                        //set up interrupts
+                        IOLog("getInterruptType: %s -- numInterruptSources: %d\n", IOService::stringFromReturn(service->getInterruptType(0, &intType)),
+                              service->_numInterruptSources);
+                        if (kIOInterruptTypeEdge == intType)
+                            IOLog("EDGE type\n");
+                        if (kIOInterruptTypeLevel == intType)
+                            IOLog("LEVEL type\n");
+                        
+                        UInt32 vector = getInterruptVector();
+                        IOLog("Fetched vector [%d] - overriding with 0\n", vector);
+                        vector = 0;
+                        
+                        if (service->callPlatformFunction( "SetDeviceInterrupts",
+                                                          false /* waitForFunction */,
+                                                          this /* nub */ ,
+                                                          (void *) &vector /* vectors */,
+                                                          (void *) 1 /* vectorCount */,
+                                                          (void *) false /* exclusive */
+                                                          ) != kIOReturnSuccess)
+                        {
+                            IOLog("callPlatformFunction(SetDeviceInterrupts) failed...\n");
+                        } else {
+                            IOLog("callPlatformFunction(SetDeviceInterrupts) succeeded!\n");
+                        }
+                        
+                        
+                        IOLog("registerInterrupt (0): %s\n", IOService::stringFromReturn(service->registerInterrupt(0, this, (IOInterruptAction) &int_handler, 0)));
+                        IOLog("registerInterrupt (1): %s\n", IOService::stringFromReturn(service->registerInterrupt(1, this, (IOInterruptAction) &int_handler, 0)));
+                        
+                        interruptSource = IOInterruptEventSource::interruptEventSource(this,
+                                                                                       OSMemberFunctionCast(IOInterruptEventAction, this, &VoodooI2C::interruptOccured2),
+                                                                                       service);
+                        
+                        if (interruptSource)
+                        {
+                            IOLog("interruptEventSource worked! %p\n", (int*)interruptSource);
+                        } else {
+                            IOLog("interruptEventSource failed :(\n");
+                        }
+                        
+                        
+                        
+                        /* Attach to this device */
                         bus_devices[bus_devices_number]->attach(this, service);
                         bus_devices_number++;
+                        
                     } else {
                         OSSafeReleaseNULL(bus_devices[bus_devices_number]);
                     }
@@ -824,6 +878,47 @@ err_out:
         fPCIDevice->close(this);
     PMstop();
     return false;
+}
+
+bool VoodooI2C::getNumberValue(const char * propKey,
+                               void       * outValue,
+                               UInt32       outBits ) const
+{
+    OSNumber * num = OSDynamicCast( OSNumber, getProperty( propKey ) );
+    bool   success = false;
+    
+    if ( num )
+    {
+        success = true;
+        
+        switch ( outBits )
+        {
+            case 32:
+                *(UInt32 *) outValue = num->unsigned32BitValue();
+                break;
+                
+            case 16:
+                *(UInt16 *) outValue = num->unsigned16BitValue();
+                break;
+                
+            case 8:
+                *(UInt8 *) outValue = num->unsigned8BitValue();
+                break;
+                
+            default:
+                success = false;
+                break;
+        }
+    }
+    return success;
+}
+
+UInt32 VoodooI2C::getInterruptVector( void ) const
+{
+    #define kInterruptVectorKey       "Interrupt Vector"
+    UInt32 value = 0xFF;
+    getNumberValue( kInterruptVectorKey, &value, 32 );
+    return value;
 }
 
 
@@ -1218,6 +1313,10 @@ int VoodooI2C::i2c_master_send(VoodooI2CHIDDevice::I2CDevice I2CDevice, UInt8 *b
     
     return (ret == 1) ? count : ret;
     
+}
+
+void VoodooI2C::interruptOccured2(OSObject* owner, IOInterruptEventSource* src, int intCount) {
+    IOLog("I2C Slave device interrupt!\n");
 }
 
 void VoodooI2C::interruptOccured(OSObject* owner, IOInterruptEventSource* src, int intCount) {
