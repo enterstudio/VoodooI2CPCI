@@ -4,29 +4,10 @@
 #define super IOService
 OSDefineMetaClassAndStructors(VoodooI2C, IOService);
 
-struct pci_dev {
-    UInt16 vendor;
-    UInt16 device;
-    UInt16 subsystem_vendor;
-    UInt16 subsystem_device;
-};
-
-/* This definitions should have been in IOPCIDevice.h. */
-enum
-{
-    kIOPCIPMCapability = 2,
-    kIOPCIPMCSR = 4,
-};
-
-
 
 
 // #define IGNORED_DEVICE "DLL05E3"
 // #define IGNORED_DEVICE "SYNA7500"
-
-#ifndef kACPIDevicePathKey
-#define kACPIDevicePathKey			"acpi-path"
-#endif
 
 struct dw_scl_sda_cfg {
         uint32_t ss_hcnt;
@@ -482,37 +463,6 @@ IOReturn VoodooI2C::setPowerState(unsigned long powerState, IOService *whatDevic
     return kIOPMAckImplied;
 }
 
-IOACPIPlatformDevice* VoodooI2C::copyACPIDevice(IORegistryEntry * device)
-{
-    IOACPIPlatformDevice *  acpiDevice = 0;
-    OSString *				acpiPath;
-    
-    if (device)
-    {
-        acpiPath = (OSString *) device->copyProperty(kACPIDevicePathKey);
-        if (acpiPath && !OSDynamicCast(OSString, acpiPath))
-        {
-            acpiPath->release();
-            acpiPath = 0;
-        }
-        
-        if (acpiPath)
-        {
-            IORegistryEntry * entry;
-            
-            // fromPath returns a retain()'d entry that needs to be released later
-            entry = IORegistryEntry::fromPath(acpiPath->getCStringNoCopy());
-            acpiPath->release();
-            
-            if (entry && entry->metaCast("IOACPIPlatformDevice"))
-                acpiDevice = (IOACPIPlatformDevice *) entry;
-            else if (entry)
-                entry->release();
-        }
-    }
-    
-    return (acpiDevice);
-}
 
 /*
  ############################################################################################
@@ -528,6 +478,7 @@ bool VoodooI2C::start(IOService* provider)
     IORegistryIterator      *children;
     IORegistryEntry         *child;
     IORegistryPlane         *plane;
+    VoodooI2CPCIDevice      *i2c_dev;
     
     
     IOLog("%s:: Found I2C device %s\n", getName(), getMatchedName(provider));
@@ -575,35 +526,29 @@ bool VoodooI2C::start(IOService* provider)
     while(!woke_up) { };
     IOLog("Wake up complete! Power state: %d\n", getPowerState());
     
-    /*
-     * Our provider class is specified in the driver property table
-     * as IOPCIDevice, so the provider must be of that class.
-     * The assert is just to make absolutely sure for debugging.
-     */
+
+    /* Try to configure as PCI device */
+    i2c_dev = new VoodooI2CPCIDevice();
+    //if (!i2c_dev || !(i2c_dev->init(provider)))
+    //    goto err_out;
     
-    assert(OSDynamicCast(IOPCIDevice, provider));
-    fPCIDevice = (IOPCIDevice*) provider;
+    //_dev->provider = i2c_dev->pciConfigure(provider);
     
-    if (!fPCIDevice->open(this)) {
-        IOLog("[VoodooI2CPCI]: Failed to open provider.\n");
-        goto err_out;
+    if (_dev->provider) {
+        IOLog("Got PCI _dev->provider! \n");
+    } else {
+        IOLog("Failed to get PCI _dev->provider...\n");
     }
     
-    IOLog("Set PCI Power State D0\n");
-    fPCIDevice->enablePCIPowerManagement(kPCIPMCSPowerStateD0);
+    goto err_out;
     
-    /*
-     * Enable PCI device / memory response from the card
-     */
-    fPCIDevice->setBusMasterEnable(true);
-    fPCIDevice->setMemoryEnable(true);
+    
 
     
     _dev = (I2CBus *)IOMalloc(sizeof(I2CBus));
     
-    _dev->provider = fPCIDevice;
-    _dev->provider_acpi = copyACPIDevice(fPCIDevice);
-    _dev->name = getMatchedName(fPCIDevice);
+    _dev->provider_acpi = i2c_dev->getACPIDevice(_dev->provider);
+    _dev->name = getMatchedName(_dev->provider);
     
     _dev->provider->retain();
     
@@ -726,8 +671,8 @@ bool VoodooI2C::start(IOService* provider)
                 {
                     OSSafeReleaseNULL(bus_devices[bus_devices_number]);
                 } else {
-                    /* This is the PCI Registry entrty, we need to find the ACPI equivalent */
-                    IOService *service = copyACPIDevice(child);
+                    /* If this is the PCI Registry entrty, we need to find the ACPI equivalent */
+                    IOService *service = i2c_dev->getACPIDevice(child);
                     if (service) {
                         IOLog("%s::%s::I2C slave device found on ACPI: %s\n", getName(), _dev->name, service->getName());
                         bus_devices[bus_devices_number]->attach(this, service);
@@ -741,88 +686,14 @@ bool VoodooI2C::start(IOService* provider)
     } else {
         IOLog("%s::%s::No I2C children found in registry!\n", getName(), _dev->name);
     }
-
-#if 0
-    
-    /*
-#warning "Begin crash with non-HID device"
-    if (children != 0) {
-        OSOrderedSet* set = children->iterateAll();
-        if(set != 0) {
-            OSIterator *iter = OSCollectionIterator::withCollection(set);
-            if (iter != 0) {
-                while( (child = (IORegistryEntry*)iter->getNextObject()) ) {
-#ifdef IGNORED_DEVICE
-                    if (strcmp((getMatchedName((IOService*)child)),(char*)IGNORED_DEVICE)){
-#endif
-                        if (strcmp(getMatchedName((IOService *)child), "CYAP0000") == 0)
-                            bus_devices[bus_devices_number] = OSTypeAlloc(VoodooI2CCyapaGen3Device);
-                        else if (strcmp(getMatchedName((IOService *)child), "ATML0001") == 0){
-                            bus_devices[bus_devices_number] = OSTypeAlloc(VoodooI2CAtmelMxtScreenDevice);
-                        } else {
-                            IOLog("VoodooI2CHIDDevice added\n");
-                            bus_devices[bus_devices_number] = OSTypeAlloc(VoodooI2CHIDDevice);
-                        }
-                        if ( !bus_devices[bus_devices_number]               ||
-                            !bus_devices[bus_devices_number]->init()       ||
-                            !bus_devices[bus_devices_number]->attach(this, (IOService*)child) )
-                        {
-                            OSSafeReleaseNULL(bus_devices[bus_devices_number]);
-                        } else {
-                            bus_devices_number++;
-                            IOLog("Attached device. Total devices: %d\n", bus_devices_number);
-                        }
-                        if (bus_devices[bus_devices_number]) {
-                            IOLog("%s::%s:: Would have tried to attach %s\n", getName(), _dev->name, child->getName());
-                        }
-#ifdef IGNORED_DEVICE
-                    }
-#endif
-                }
-                iter->release();
-            }
-            set->release();
-        }
-    }
-    children->release();
-     */
-#warning "End crash with non-HID device"
-    
-#endif
-    
-    
-    // Declare an array of two IOPMPowerState structures (kMyNumberOfStates = 2).
-    /*
-     #define kMyNumberOfStates 2
-     
-     static IOPMPowerState myPowerStates[kMyNumberOfStates];
-     // Zero-fill the structures.
-     bzero (myPowerStates, sizeof(myPowerStates));
-     // Fill in the information about your device's off state:
-     myPowerStates[0].version = 1;
-     myPowerStates[0].capabilityFlags = kIOPMPowerOff;
-     myPowerStates[0].outputPowerCharacter = kIOPMPowerOff;
-     myPowerStates[0].inputPowerRequirement = kIOPMPowerOff;
-     // Fill in the information about your device's on state:
-     myPowerStates[1].version = 1;
-     myPowerStates[1].capabilityFlags = kIOPMPowerOn;
-     myPowerStates[1].outputPowerCharacter = kIOPMPowerOn;
-     myPowerStates[1].inputPowerRequirement = kIOPMPowerOn;
-     
-     
-     
-     provider->joinPMtree(this);
-     
-     registerPowerDriver(this, myPowerStates, kMyNumberOfStates);
-     */
     
     return true;
 
     
 err_out:
-    if (fPCIDevice)
-        fPCIDevice->close(this);
-    PMstop();
+    //if (_dev->provider)
+    //    _dev->provider->close(this);
+    //PMstop();
     return false;
 }
 
@@ -883,9 +754,9 @@ void VoodooI2C::stop(IOService * provider) {
             IOFree(_dev, sizeof(I2CBus));
         }
     } else {
-        IOLog("%s::fPCIDevice->close(): %llx\n", getName(), (uint64_t)fPCIDevice);
-        if (fPCIDevice)
-            fPCIDevice->close(this);
+        //IOLog("%s::provider->close(): %llx\n", getName(), (uint64_t)_dev->provider);
+        //if (_dev->provider)
+        //    _dev->provider->close(this);
     }
     
     //stop power management

@@ -1,12 +1,12 @@
 #include <IOKit/IOLib.h>
 #include <IOKit/IOKitKeys.h>
-#include <IOKit/pci/IOPCIDevice.h>
 #include <IOKit/IOWorkLoop.h>
 #include <IOKit/IOInterruptEventSource.h>
 #include <IOKit/IOLocks.h>
 #include <IOKit/IOCommandGate.h>
 #include <string.h>
 #include "VoodooI2CDevice.h"
+#include "VoodooI2CPCIDevice.h"
 #include "VoodooI2CHIDDevice.h"
 #include "VoodooCyapaGen3Device.h"
 #include "VoodooI2CAtmelMxtScreenDevice.h"
@@ -162,8 +162,6 @@ class VoodooI2C : public IOService {
     
     
 public:
-    IOPCIDevice*            fPCIDevice = NULL;
-    
     struct i2c_msg {
         UInt16 addr;
         UInt16 flags;
@@ -190,7 +188,7 @@ public:
     } i2c_smbus_data;
     
     typedef struct {
-        IOPCIDevice *provider;
+        IOService *provider;
         IOACPIPlatformDevice *provider_acpi;
         
         IOWorkLoop *workLoop;
